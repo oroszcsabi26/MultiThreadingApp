@@ -1,0 +1,68 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MultiThreadTaskApp.ViewModels"
+             x:Class="MultiThreadTaskApp.MainPage">
+
+    <!-- BindingContext beállítása a MainViewModelhez -->
+    <ContentPage.BindingContext>
+        <vm:MainViewModel />
+    </ContentPage.BindingContext>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="10" Spacing="10">
+            <!-- Gombok -->
+            <HorizontalStackLayout Spacing="10">
+                <Button Text="Start" Command="{Binding StartCommand}" />
+                <Button Text="Stop" Command="{Binding StopCommand}" />
+                <Entry Placeholder="Max list size" Text="{Binding MaxObjectListSize}" Keyboard="Numeric" WidthRequest="100" />
+            </HorizontalStackLayout>
+
+            <!-- PropertyObject-ek görgethető CollectionView-ban -->
+            <CollectionView ItemsSource="{Binding PropertyObjects}">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="4"
+                                     HorizontalItemSpacing="10"
+                                     VerticalItemSpacing="10" />
+                </CollectionView.ItemsLayout>
+
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame BorderColor="Gray" Padding="10" CornerRadius="5" HasShadow="True">
+                            <VerticalStackLayout>
+                                <!-- előállított GUID -->
+                                <Label Text="Generated GUID:" FontAttributes="Bold" />
+                                <Label Text="{Binding GeneratedGuid}" FontSize="12" TextColor="Blue" />
+
+                                <!-- Property-k -->
+                                <Label Text="{Binding BoolValue1, StringFormat='Bool1: {0}'}" />
+                                <Label Text="{Binding BoolValue2, StringFormat='Bool2: {0}'}" />
+                                <Label Text="{Binding IntValue1, StringFormat='Int1: {0}'}" />
+                                <Label Text="{Binding IntValue2, StringFormat='Int2: {0}'}" />
+                                <Label Text="{Binding DoubleValue1, StringFormat='Double1: {0:F2}'}" />
+                                <Label Text="{Binding DoubleValue2, StringFormat='Double2: {0:F2}'}" />
+                                <Label Text="{Binding LastTimeModified, StringFormat='Last Modified: {0:yyyy-MM-dd HH:mm:ss}'}" />
+
+                                <!-- Színek megjelenítése -->
+                                <HorizontalStackLayout>
+                                    <Label Text="Colors:" FontAttributes="Bold" />
+                                    <CollectionView ItemsSource="{Binding Colors}" HorizontalScrollBarVisibility="Never">
+                                        <CollectionView.ItemsLayout>
+                                            <LinearItemsLayout Orientation="Horizontal" />
+                                        </CollectionView.ItemsLayout>
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Frame BackgroundColor="{Binding .}" WidthRequest="20" HeightRequest="20" CornerRadius="5" />
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
