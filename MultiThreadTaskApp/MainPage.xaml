@@ -11,11 +11,23 @@
 
     <ScrollView>
         <VerticalStackLayout Padding="10" Spacing="10">
-            <!-- Gombok -->
+            <!-- ObjektumGenerálás -->
             <HorizontalStackLayout Spacing="10">
-                <Button Text="Start" Command="{Binding StartCommand}" />
-                <Button Text="Stop" Command="{Binding StopCommand}" />
-                <Entry Placeholder="Max list size" Text="{Binding MaxObjectListSize}" Keyboard="Numeric" WidthRequest="100" />
+                <Button Text="Start Generating" Command="{Binding StartObjectGenerationCommand}" />
+                <Button Text="Stop Generating" Command="{Binding StopObjectGenerationCommand}" />
+                <Label Text="Set PropertyObject List Max Size:" />
+                <Entry Placeholder="Enter a number" Text="{Binding MaxObjectListSize}" Keyboard="Numeric" WidthRequest="100" />
+            </HorizontalStackLayout>
+
+            <!-- Feladatfeldolgozás -->
+            <HorizontalStackLayout Spacing="10">
+                <Button Text="Start Tasks" Command="{Binding StartTaskProcessingCommand}" />
+                <Button Text="Stop Tasks" Command="{Binding StopTaskProcessingCommand}" />
+                <Label Text="Set Worker Class Max Size:" />
+                <Entry Placeholder="Enter a number" Text="{Binding WorkerCount}" Keyboard="Numeric" WidthRequest="100" />
+                <Label Text="Set Queue Max Size:" />
+                <Entry Placeholder="Enter a number" Text="{Binding MaxQueueSize}" Keyboard="Numeric" WidthRequest="100" />
+                <Label Text="{Binding ExecutedTaskCount, StringFormat='Tasks executed: {0}'}" FontSize="18" />
             </HorizontalStackLayout>
 
             <!-- PropertyObject-ek görgethető CollectionView-ban -->

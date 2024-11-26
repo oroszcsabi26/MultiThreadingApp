@@ -1,27 +1,91 @@
-﻿namespace MultiThreadTaskApp.Models
-{
-    public class PropertyObject
-    {
-        private static readonly Random random = new Random();
+﻿using MultiThreadTaskApp.ViewModels;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
-        public bool BoolValue1 { get; set; }
-        public bool BoolValue2 { get; set; }
-        public int IntValue1 { get; set; }
-        public int IntValue2 { get; set; }
-        public double DoubleValue1 { get; set; }
-        public double DoubleValue2 { get; set; }
-        public string LongString { get; set; } 
-        public List<Color> Colors { get; set; } 
-        public DateTime LastTimeModified { get; set; }
-        public string GeneratedGuid { get; private set; } // Egyedi GUID készítése a LongString alapján
+namespace MultiThreadTaskApp.Models
+{
+    public class PropertyObject : BaseViewModel, INotifyPropertyChanged
+    {
+        private static readonly Random m_random = new Random();
+
+        private bool m_boolValue1;
+        public bool BoolValue1
+        {
+            get => m_boolValue1;
+            set => SetProperty(ref m_boolValue1, value);
+        }
+
+        private bool m_boolValue2;
+        public bool BoolValue2
+        {
+            get => m_boolValue2;
+            set => SetProperty(ref m_boolValue2, value);
+        }
+        private int m_intValue1;
+        public int IntValue1
+        {
+            get => m_intValue1;
+            set => SetProperty(ref m_intValue1, value);
+        }
+
+        private int m_intValue2;
+        public int IntValue2
+        {
+            get => m_intValue2;
+            set => SetProperty(ref m_intValue2, value);
+        }
+
+        private double m_doubleValue1;
+        public double DoubleValue1
+        {
+            get => m_doubleValue1;
+            set => SetProperty(ref m_doubleValue1, value);
+        }
+
+        private double m_doubleValue2;
+        public double DoubleValue2
+        {
+            get => m_doubleValue2;
+            set => SetProperty(ref m_doubleValue2, value);
+        }
+
+        private string m_longString;
+        public string LongString
+        {
+            get => m_longString;
+            set => SetProperty(ref m_longString, value);
+        } 
+
+        private List<Color> m_colors;
+        public List<Color> Colors
+        {
+            get => m_colors;
+            set => SetProperty(ref m_colors, value);
+        } 
+
+        private DateTime m_lastTimeModified;
+        public DateTime LastTimeModified
+        {
+            get => m_lastTimeModified;
+            set => SetProperty(ref m_lastTimeModified, value);
+        }
+
+        private string? m_generatedGuid;
+        public string? GeneratedGuid
+        {
+            get => m_generatedGuid;
+            set => SetProperty(ref m_generatedGuid, value);
+        } 
+
         public PropertyObject()
         {
-            BoolValue1 = random.Next(0, 2) == 1;
-            BoolValue2 = random.Next(0, 2) == 1;
-            IntValue1 = random.Next(0, 100000);
-            IntValue2 = random.Next(0, 1000);
-            DoubleValue1 = random.NextDouble() * 100000;
-            DoubleValue2 = random.NextDouble() * 1000;
+            BoolValue1 = m_random.Next(0, 2) == 1;
+            BoolValue2 = m_random.Next(0, 2) == 1;
+            IntValue1 = m_random.Next(0, 100000);
+            IntValue2 = m_random.Next(0, 1000);
+            DoubleValue1 = m_random.NextDouble() * 100000;
+            DoubleValue2 = m_random.NextDouble() * 1000;
             LastTimeModified = DateTime.Now;
 
             LongString = GenerateRandomString(30000);
@@ -29,20 +93,21 @@
             GeneratedGuid = GenerateGuidFromLongString();
         }
 
+        // Egyedi GUID készítése a LongString alapján
         private string? GenerateGuidFromLongString()
         {
-            int startIndex = random.Next(0, LongString.Length - 32);
+            int startIndex = m_random.Next(0, LongString.Length - 32);
             string guidSource = LongString.Substring(startIndex, 32);
             return $"{guidSource.Substring(0, 8)}-{guidSource.Substring(8, 4)}-{guidSource.Substring(12, 4)}-{guidSource.Substring(16, 4)}-{guidSource.Substring(20, 12)}";
         }
 
-        private string GenerateRandomString(int length)
+        private string GenerateRandomString(int p_length)
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            char[] stringChars = new char[length];
-            for (int i = 0; i < length; i++)
+            char[] stringChars = new char[p_length];
+            for (int i = 0; i < p_length; i++)
             {
-                stringChars[i] = chars[random.Next(chars.Length)];
+                stringChars[i] = chars[m_random.Next(chars.Length)];
             }
             return new string(stringChars);
         }

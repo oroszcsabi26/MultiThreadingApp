@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using MultiThreadTaskApp.Models;
+using MultiThreadTaskApp.Services;
 
 namespace MultiThreadTaskApp.ViewModels
 {
@@ -15,13 +14,16 @@ namespace MultiThreadTaskApp.ViewModels
         public ObservableCollection<PropertyObject> PropertyObjects
         {
             get => m_propertyObjects;
-            set => SetProperty(ref m_propertyObjects, value); // amikor a PropertyObjects értéke megváltozik, akkor értesíti a UI-t az OnpropertyChanged metódus segítségével
+            set => SetProperty(ref m_propertyObjects, value);
         }
 
-        private CancellationTokenSource m_cancellationTokenSource;
+        private ProcessorForTasks m_taskProcessor;
+        private CancellationTokenSource m_objectGenerationTokenSource;
 
-        public ICommand StartCommand { get; }
-        public ICommand StopCommand { get; }
+        public ICommand StartObjectGenerationCommand { get; }
+        public ICommand StopObjectGenerationCommand { get; }
+        public ICommand StartTaskProcessingCommand { get; }
+        public ICommand StopTaskProcessingCommand { get; }
 
         private int m_maxObjectListSize = 20;
         public string MaxObjectListSize
@@ -37,22 +39,81 @@ namespace MultiThreadTaskApp.ViewModels
             }
         }
 
+        private int m_maxQueueSize = 30;
+
+        public string MaxQueueSize
+        {
+            get => m_maxQueueSize.ToString();
+            set
+            {
+                if (int.TryParse(value, out int newValue) && newValue > 0)
+                {
+                    m_maxQueueSize = newValue;
+                    m_taskProcessor?.SetMaxQueueSize(newValue);
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int m_workerCount = 3;
+        public string WorkerCount
+        {
+            get => m_workerCount.ToString();
+            set
+            {
+                if (int.TryParse(value, out int newValue) && newValue > 0)
+                {
+                    m_workerCount = newValue;
+                    m_taskProcessor?.SetWorkerCount(newValue);
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int m_executedTaskCount;
+        public int ExecutedTaskCount
+        {
+            get => m_executedTaskCount;
+            set => SetProperty(ref m_executedTaskCount, value);
+        }
+
+        private void OnExecutedTaskCountChangedHendler(int p_count)
+        {
+            ExecutedTaskCount = p_count;
+        }
+
         public MainViewModel()
         {
             PropertyObjects = new ObservableCollection<PropertyObject>();
-            StartCommand = new Command(StartGeneratingObjects);
-            StopCommand = new Command(StopGeneratingObjects);
+
+            StartObjectGenerationCommand = new Command(StartGeneratingObjects);
+            StopObjectGenerationCommand = new Command(StopGeneratingObjects);
+
+            StartTaskProcessingCommand = new Command(StartProcessingTasks);
+            StopTaskProcessingCommand = new Command(StopProcessingTasks);
+        }
+
+        private async void StartGeneratingObjects()
+        {
+            m_objectGenerationTokenSource = new CancellationTokenSource();
+            _ = Task.Run(() => GenerateObjectsAsync(m_objectGenerationTokenSource.Token));
+
+            // Várunk, amíg a PropertyObjects legalább egy elemet tartalmaz
+            while (PropertyObjects.Count == 0)
+            {
+                await Task.Delay(100); // Rövid várakozás az UI megakadása nélkül
+            }
+
+            // Csak ezután példányosítjuk a TaskProcessor-t
+            if (m_taskProcessor == null)
+            {
+                m_taskProcessor = new ProcessorForTasks(PropertyObjects, m_maxQueueSize, m_workerCount);
+            }
         }
 
         private void StopGeneratingObjects()
         {
-            m_cancellationTokenSource?.Cancel();
-        }
-
-        private void StartGeneratingObjects()
-        {
-            m_cancellationTokenSource = new CancellationTokenSource();
-            Task.Run(() => GenerateObjectsAsync(m_cancellationTokenSource.Token)); // háttérszálon végezzük az objektumok létrehozását így a UI elvileg nem akadhat meg
+            m_objectGenerationTokenSource?.Cancel();
         }
 
         private async Task GenerateObjectsAsync(CancellationToken token)
@@ -61,7 +122,6 @@ namespace MultiThreadTaskApp.ViewModels
 
             while (!token.IsCancellationRequested)
             {
-                // Dispatchher, hogy a UI elemekhez csak a fő szál férhessen hozzá
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     while (PropertyObjects.Count >= m_maxObjectListSize)
@@ -73,9 +133,22 @@ namespace MultiThreadTaskApp.ViewModels
                     PropertyObject newObject = new PropertyObject();
                     PropertyObjects.Add(newObject);
                 });
-                // mivel async metódusban így megvárja az await-et
-                await Task.Delay(2000); // új objektum generálása 2 mp-ként
+
+                await Task.Delay(2000);
             }
+        }
+
+        private void StartProcessingTasks()
+        {
+            m_taskProcessor.ResetCancellationToken();
+            m_taskProcessor.OnExecutedTaskCountChanged += OnExecutedTaskCountChangedHendler;
+            m_taskProcessor.StartProcessing();
+        }
+
+        private void StopProcessingTasks()
+        {
+            m_taskProcessor.OnExecutedTaskCountChanged -= OnExecutedTaskCountChangedHendler;
+            m_taskProcessor.StopProcessing();
         }
     }
 }

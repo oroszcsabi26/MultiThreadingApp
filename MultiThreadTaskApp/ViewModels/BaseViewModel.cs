@@ -14,21 +14,21 @@ namespace MultiThreadTaskApp.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
 
         // értesíti a UI elemeket ha egy adott tulajdonság értéke változik
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        protected void OnPropertyChanged([CallerMemberName] string p_propertyName = null)
         {
             // kiváltjuk a PropertyChanged eseményt ami frissíti a hozzá kötött elemeket
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p_propertyName));
         }
 
         // ez a metódus ellenőrzi hogy megváltozott-e egy tulajdonság értéke mielőtt frissítené azt
-        protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null) //field: PropertyObject, T value az új érték, propertyName: a tulajdonság neve
+        protected bool SetProperty<T>(ref T p_field, T p_value, [CallerMemberName] string p_propertyName = null) //field: PropertyObject, T value az új érték, propertyName: a tulajdonság neve
         {
-            if (EqualityComparer<T>.Default.Equals(field, value))
+            if (EqualityComparer<T>.Default.Equals(p_field, p_value))
             {
                 return false;
             }
-            field = value;
-            OnPropertyChanged(propertyName);
+            p_field = p_value;
+            OnPropertyChanged(p_propertyName);
             return true;
         }
     }
