@@ -96,8 +96,15 @@ namespace MultiThreadTaskApp.ViewModels
         private async void StartGeneratingObjects()
         {
             m_objectGenerationTokenSource = new CancellationTokenSource();
+            //Todo : miert task miert nem thread ??? Mi a kulondseg ???
+            //https://csharptutorial.hu/docs/hellovilag-hellocsharp/10-tobbszalu-programozas/thread/
+            //https://csharptutorial.hu/docs/hellovilag-hellocsharp/10-tobbszalu-programozas/a-task-osztaly/
+            //jobban meg kellene ertened hogyan mukodik a TASK es a THREAD , mi az a threadpool, miert jobb a task mint a thread es milyen elonye van a threadnek pro/kontra 
+            //https://docplayer.hu/115158748-Task-alapu-parhuzamositas-c-kornyezetben.html - Mikor hasznaljunk threadet es mikor taskot
+            //https://www.youtube.com/watch?v=T79Muk9xQ94 - eleg jo video a threadrol
             _ = Task.Run(() => GenerateObjectsAsync(m_objectGenerationTokenSource.Token));
 
+            //Todo : miert kell varnunk ???
             // Várunk, amíg a PropertyObjects legalább egy elemet tartalmaz
             while (PropertyObjects.Count == 0)
             {
@@ -122,6 +129,7 @@ namespace MultiThreadTaskApp.ViewModels
 
             while (!token.IsCancellationRequested)
             {
+                //Todo : Ez igy nagyon nem jo mert a foszalon tortenik az objektumok letrehozasa. Mi van akkor ha ez hosszu ideig tart 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     while (PropertyObjects.Count >= m_maxObjectListSize)
@@ -131,6 +139,8 @@ namespace MultiThreadTaskApp.ViewModels
                     }
 
                     PropertyObject newObject = new PropertyObject();
+                    Task.Delay(5000).Wait(); // 5 másodperces várakozás a PropertyObject példányosítása után, teszetles miatt, mert igy megakasztja a foszalat es a UI beakad. Latszik hogy a foszal beakad
+
                     PropertyObjects.Add(newObject);
                 });
 

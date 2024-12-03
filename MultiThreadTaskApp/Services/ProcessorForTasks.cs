@@ -68,6 +68,7 @@ namespace MultiThreadTaskApp.Services
             m_maxQueueSize = p_maxSize;
         }
 
+        //Todo : Errol beszeljunk szoban , hogyan kepzelted ezt el  
         private async void ProcessTasksAsync(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
