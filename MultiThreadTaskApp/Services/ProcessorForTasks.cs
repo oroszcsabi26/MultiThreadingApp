@@ -1,4 +1,5 @@
 ﻿using MultiThreadTaskApp.Models;
+using MultiThreadTaskApp.ViewModels;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -12,46 +13,70 @@ namespace MultiThreadTaskApp.Services
     public class ProcessorForTasks
     {
         private readonly ObservableCollection<PropertyObject> m_propertyObjects; // az elérhető objektumok listája
-        private readonly ConcurrentQueue<TasksForObjects> m_tasksQueue; // a végrehajtandó feladatok listája
-        private CancellationTokenSource m_cancellationTokenSource;
-        private int m_executedTaskCount; // a végrehajtott feladatok száma
+        private CancellationTokenSource m_taskProcessCancellationTokenSource;
+        private CancellationTokenSource m_taskGenerationCancellationTokenSource;
         private int m_maxQueueSize; // a maximális feladatok száma
         private int m_workerClassCount; // a háttérszálon dolgozó osztályok száma
+        private readonly MainViewModel m_mainViewModel;
+        private List<Task> m_taskList = new List<Task>();
+        private readonly SemaphoreSlim m_taskListSemaphore = new SemaphoreSlim(1, 1);
 
-        public event Action<int> OnExecutedTaskCountChanged;
-
-        public ProcessorForTasks(ObservableCollection<PropertyObject> p_propertyObjects, int p_maxQueueSize = 30, int p_workerClassCount = 3)
+        public ProcessorForTasks(MainViewModel p_mainViewModel, ObservableCollection<PropertyObject> p_propertyObjects, int p_maxQueueSize = 30, int p_workerClassCount = 3)
         {
+            m_mainViewModel = p_mainViewModel ?? throw new ArgumentNullException(nameof(p_mainViewModel));
             m_propertyObjects = p_propertyObjects ?? throw new ArgumentNullException(nameof(p_propertyObjects));
-            m_tasksQueue = new ConcurrentQueue<TasksForObjects>();
-            m_cancellationTokenSource = new CancellationTokenSource();
-            m_executedTaskCount = 0;
+            m_taskProcessCancellationTokenSource = new CancellationTokenSource();
             m_maxQueueSize = p_maxQueueSize;
             m_workerClassCount = p_workerClassCount;
-
-            if (m_propertyObjects.Count > 0)
-            {
-                GenerateTasks();
-            }
         }
 
         public void StartProcessing()
         {
-            for (int i = 0; i < m_workerClassCount; i++)
+            m_taskProcessCancellationTokenSource = new CancellationTokenSource();
+            m_taskGenerationCancellationTokenSource = new CancellationTokenSource();
+
+            // Indítsuk el a GenerateTasks metódust egy külöl Thread-ben
+            Thread generateTasksThread = new Thread(() => GenerateTasks(m_taskGenerationCancellationTokenSource.Token))
             {
-                Task.Run(() => ProcessTasksAsync(m_cancellationTokenSource.Token));
-            }
+                IsBackground = true
+            };
+            generateTasksThread.Start();
+
+            // Feladatfeldolgozók indítása
+            Task.Run(() => ProcessTasksAsync(m_taskProcessCancellationTokenSource.Token));
         }
 
-        public void StopProcessing()
+        public async void StopProcessing()
         {
-            m_cancellationTokenSource.Cancel();
+            m_taskProcessCancellationTokenSource.Cancel();
+            m_taskGenerationCancellationTokenSource.Cancel();
+
+            await m_taskListSemaphore.WaitAsync();
+            try
+            {
+                foreach (Task task in m_taskList)
+                {
+                    if (!task.IsCompleted && !task.IsCanceled)
+                    {
+                        try
+                        {
+                            await Task.WhenAny(task, Task.Delay(100));
+                        }
+                        catch (AggregateException) { }
+                    }
+                }
+                m_taskList.Clear();
+            }
+            finally
+            {
+                m_taskListSemaphore.Release();
+            }
         }
 
         // Párhuzamos feldolgozók számának beállítása
         public void SetWorkerCount(int p_count)
         {
-            if(p_count < 1)
+            if (p_count < 1)
             {
                 throw new ArgumentException("A párhuzamos feldolgozók száma nem lehet kisebb, mint 1.");
             }
@@ -68,48 +93,95 @@ namespace MultiThreadTaskApp.Services
             m_maxQueueSize = p_maxSize;
         }
 
-        //Todo : Errol beszeljunk szoban , hogyan kepzelted ezt el  
         private async void ProcessTasksAsync(CancellationToken token)
         {
-            while (!token.IsCancellationRequested)
-            {
-                if (m_tasksQueue.TryDequeue(out TasksForObjects task))
-                {
-                    task.Execute();
-                    Interlocked.Increment(ref m_executedTaskCount); // szálbiztos növelése a száméálónak
-                    
-                    OnExecutedTaskCountChanged?.Invoke(m_executedTaskCount);
+            SemaphoreSlim semaphore = new SemaphoreSlim(m_workerClassCount);
 
-                    if (m_tasksQueue.Count < m_maxQueueSize / 2)
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    List<Task> runningTasks = new List<Task>();
+
+                    await m_taskListSemaphore.WaitAsync(token); // Szálbiztos hozzáférés a taskList-hez
+
+                    try
                     {
-                        GenerateTasks();
+                        foreach (Task task in m_taskList.ToList())
+                        {
+                            if (token.IsCancellationRequested) break;
+
+                            await semaphore.WaitAsync(token);
+
+                            task.Start();
+
+                            Task runningTask = task.ContinueWith(t =>
+                            {
+                                semaphore.Release();
+                                m_mainViewModel.IncrementExecutedTaskCount();
+                            }, token);
+
+                            runningTasks.Add(runningTask);
+                            m_taskList.Remove(task);
+                            await Task.Delay(1000);
+                        }
+                    }
+                    finally
+                    {
+                        m_taskListSemaphore.Release();
                     }
 
-                    // 2 másodperces késleltetés minden task végrehajtása után
-                    await Task.Delay(2000);
+                    await Task.WhenAll(runningTasks);
                 }
-                else
-                {
-                    await Task.Delay(100);
-                }
+            }
+            catch (OperationCanceledException ex) 
+            { 
+                Console.WriteLine(ex.Message); 
+            }
+            finally
+            {
+                semaphore.Dispose();
             }
         }
 
-        private void GenerateTasks()
+        private async void GenerateTasks(CancellationToken token)
         {
             Random random = new Random();
-            while (m_tasksQueue.Count < m_maxQueueSize)
+            try
             {
-                PropertyObject randomTargetObject = m_propertyObjects[random.Next(0, m_propertyObjects.Count)];
-                TasksForObjects.TaskType randomTaskType = (TasksForObjects.TaskType)random.Next(0, 5);
-                m_tasksQueue.Enqueue(new TasksForObjects(randomTaskType, randomTargetObject));            
+                while (!token.IsCancellationRequested)
+                {
+                    await m_taskListSemaphore.WaitAsync(token); // Szálbiztos hozzáférés a taskList-hez
+
+                    try
+                    {
+                        if (m_taskList.Count < m_maxQueueSize)
+                        {
+                            PropertyObject randomTargetObject = m_propertyObjects[random.Next(0, m_propertyObjects.Count)];
+                            TasksForObjects.TaskType randomTaskType = (TasksForObjects.TaskType)random.Next(0, 5);
+
+                            Task newTask = new TasksForObjects(randomTaskType, randomTargetObject).CreateTasks(token);
+                            m_taskList.Add(newTask);
+                        }
+                    }
+                    finally
+                    {
+                        m_taskListSemaphore.Release(); // Mindig engedjük fel a lock-ot
+                    }
+
+                    await Task.Delay(100); 
+                }
+            }
+            catch (OperationCanceledException ex) 
+            { 
+                Console.WriteLine(ex.Message); 
             }
         }
 
         public void ResetCancellationToken()
         {
-            m_cancellationTokenSource?.Dispose();
-            m_cancellationTokenSource = new CancellationTokenSource();
+            m_taskProcessCancellationTokenSource?.Dispose();
+            m_taskProcessCancellationTokenSource = new CancellationTokenSource();
         }
     }
 }

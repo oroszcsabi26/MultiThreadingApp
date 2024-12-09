@@ -10,15 +10,16 @@ namespace MultiThreadTaskApp.ViewModels
 {
     public class MainViewModel : BaseViewModel
     {
+        private ProcessorForTasks m_taskProcessor;
+        private CancellationTokenSource m_objectGenerationTokenSource;
         private ObservableCollection<PropertyObject> m_propertyObjects;
+        private readonly object propertyObjectsLock = new object(); // Lock objektum a PropertyObjects kollekcióhoz.
+
         public ObservableCollection<PropertyObject> PropertyObjects
         {
             get => m_propertyObjects;
             set => SetProperty(ref m_propertyObjects, value);
         }
-
-        private ProcessorForTasks m_taskProcessor;
-        private CancellationTokenSource m_objectGenerationTokenSource;
 
         public ICommand StartObjectGenerationCommand { get; }
         public ICommand StopObjectGenerationCommand { get; }
@@ -49,7 +50,7 @@ namespace MultiThreadTaskApp.ViewModels
                 if (int.TryParse(value, out int newValue) && newValue > 0)
                 {
                     m_maxQueueSize = newValue;
-                    m_taskProcessor?.SetMaxQueueSize(newValue);
+                    m_taskProcessor?.SetMaxQueueSize(newValue); 
                     OnPropertyChanged();
                 }
             }
@@ -64,7 +65,7 @@ namespace MultiThreadTaskApp.ViewModels
                 if (int.TryParse(value, out int newValue) && newValue > 0)
                 {
                     m_workerCount = newValue;
-                    m_taskProcessor?.SetWorkerCount(newValue);
+                    m_taskProcessor?.SetWorkerCount(newValue); 
                     OnPropertyChanged();
                 }
             }
@@ -74,12 +75,7 @@ namespace MultiThreadTaskApp.ViewModels
         public int ExecutedTaskCount
         {
             get => m_executedTaskCount;
-            set => SetProperty(ref m_executedTaskCount, value);
-        }
-
-        private void OnExecutedTaskCountChangedHendler(int p_count)
-        {
-            ExecutedTaskCount = p_count;
+            private set => SetProperty(ref m_executedTaskCount, value); 
         }
 
         public MainViewModel()
@@ -93,28 +89,17 @@ namespace MultiThreadTaskApp.ViewModels
             StopTaskProcessingCommand = new Command(StopProcessingTasks);
         }
 
-        private async void StartGeneratingObjects()
+        private void StartGeneratingObjects()
         {
             m_objectGenerationTokenSource = new CancellationTokenSource();
-            //Todo : miert task miert nem thread ??? Mi a kulondseg ???
-            //https://csharptutorial.hu/docs/hellovilag-hellocsharp/10-tobbszalu-programozas/thread/
-            //https://csharptutorial.hu/docs/hellovilag-hellocsharp/10-tobbszalu-programozas/a-task-osztaly/
-            //jobban meg kellene ertened hogyan mukodik a TASK es a THREAD , mi az a threadpool, miert jobb a task mint a thread es milyen elonye van a threadnek pro/kontra 
-            //https://docplayer.hu/115158748-Task-alapu-parhuzamositas-c-kornyezetben.html - Mikor hasznaljunk threadet es mikor taskot
-            //https://www.youtube.com/watch?v=T79Muk9xQ94 - eleg jo video a threadrol
-            _ = Task.Run(() => GenerateObjectsAsync(m_objectGenerationTokenSource.Token));
+            Thread objectGenerationThread = new Thread(() => GenerateObjects(m_objectGenerationTokenSource.Token));
+            objectGenerationThread.IsBackground = true; 
+            objectGenerationThread.Start();
 
-            //Todo : miert kell varnunk ???
-            // Várunk, amíg a PropertyObjects legalább egy elemet tartalmaz
-            while (PropertyObjects.Count == 0)
-            {
-                await Task.Delay(100); // Rövid várakozás az UI megakadása nélkül
-            }
-
-            // Csak ezután példányosítjuk a TaskProcessor-t
+            //Példányosítjuk a TaskProcessor-t
             if (m_taskProcessor == null)
             {
-                m_taskProcessor = new ProcessorForTasks(PropertyObjects, m_maxQueueSize, m_workerCount);
+                m_taskProcessor = new ProcessorForTasks(this, PropertyObjects, m_maxQueueSize, m_workerCount);
             }
         }
 
@@ -123,42 +108,101 @@ namespace MultiThreadTaskApp.ViewModels
             m_objectGenerationTokenSource?.Cancel();
         }
 
-        private async Task GenerateObjectsAsync(CancellationToken token)
+        private void GenerateObjects(CancellationToken token)
         {
             Random random = new Random();
 
             while (!token.IsCancellationRequested)
             {
-                //Todo : Ez igy nagyon nem jo mert a foszalon tortenik az objektumok letrehozasa. Mi van akkor ha ez hosszu ideig tart 
-                MainThread.BeginInvokeOnMainThread(() =>
+                List<PropertyObject> newObjects = new List<PropertyObject>();
+
+                lock (propertyObjectsLock)
                 {
-                    while (PropertyObjects.Count >= m_maxObjectListSize)
+                    while (PropertyObjects.Count + newObjects.Count >= m_maxObjectListSize)
                     {
                         int removeIndex = random.Next(0, PropertyObjects.Count);
-                        PropertyObjects.RemoveAt(removeIndex);
+                        PropertyObject targetObject = PropertyObjects[removeIndex];
+
+                        // Várunk, amíg semmilyen művelet nem fut az objektumon
+                        targetObject.WaitForNoOperations();
+
+                        if (PropertyObjects.Contains(targetObject))
+                        {
+                            PropertyObjects.Remove(targetObject);
+                        }
                     }
+                }
 
-                    PropertyObject newObject = new PropertyObject();
-                    Task.Delay(5000).Wait(); // 5 másodperces várakozás a PropertyObject példányosítása után, teszetles miatt, mert igy megakasztja a foszalat es a UI beakad. Latszik hogy a foszal beakad
+                // Új objektum létrehozása és hozzáadása
+                PropertyObject newObject = new PropertyObject();
+                newObjects.Add(newObject);
 
-                    PropertyObjects.Add(newObject);
-                });
+                lock (propertyObjectsLock)
+                {
+                    foreach (PropertyObject obj in newObjects)
+                    {
+                        PropertyObjects.Add(obj);
+                    }
+                }
 
-                await Task.Delay(2000);
+                Thread.Sleep(2000); // Új objektumok között várakozás
             }
         }
+
+        /*
+        private void GenerateObjects(CancellationToken token)
+        {
+            Random random = new Random();
+
+            while (!token.IsCancellationRequested)
+            {
+                List<PropertyObject> newObjects = new List<PropertyObject>(); 
+
+                // Objektum törlése, ha szükséges
+                while (PropertyObjects.Count + newObjects.Count >= m_maxObjectListSize)
+                {
+                    int removeIndex = random.Next(0, PropertyObjects.Count);
+                    PropertyObject targetObject = PropertyObjects[removeIndex];
+
+                    // Várunk, amíg semmilyen művelet nem fut az objektumon
+                    targetObject.WaitForNoOperations();
+                    lock (targetObject)
+                    {
+                        if (PropertyObjects.Contains(targetObject))
+                        {
+                            PropertyObjects.Remove(targetObject);
+                        }
+                    }
+                }
+                // Új objektum létrehozása és hozzáadása
+                PropertyObject newObject = new PropertyObject();
+                newObjects.Add(newObject);
+
+                foreach (PropertyObject obj in newObjects)
+                {
+                    PropertyObjects.Add(obj);
+                }
+
+                Thread.Sleep(2000); 
+            }
+        }
+        */
 
         private void StartProcessingTasks()
         {
             m_taskProcessor.ResetCancellationToken();
-            m_taskProcessor.OnExecutedTaskCountChanged += OnExecutedTaskCountChangedHendler;
             m_taskProcessor.StartProcessing();
         }
 
         private void StopProcessingTasks()
         {
-            m_taskProcessor.OnExecutedTaskCountChanged -= OnExecutedTaskCountChangedHendler;
             m_taskProcessor.StopProcessing();
+        }
+
+        internal void IncrementExecutedTaskCount()
+        {
+            Interlocked.Increment(ref m_executedTaskCount);
+            OnPropertyChanged(nameof(ExecutedTaskCount));
         }
     }
 }
